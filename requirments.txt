@@ -1,0 +1,5 @@
+openai
+openparse
+llama-index
+llama-index-embeddings-huggingface
+"fschat[model_worker,webui]"
