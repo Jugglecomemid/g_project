@@ -721,4 +721,727 @@ convolutional neural networks and the coordconv so-
 lution. In NeurIPS, pages 9605–9616, 2018. 3, 4 
 [26] S. Liu, D. Huang, and Y. Wang. Learning spatial fu- 
 sion for single-shot object detection. arXiv preprint 
+arXiv:1911.09516, 2019. 6 0 
+2 
+0 
+2 <br><br>g 
+u 
+A 
+3 <br><br>] <br><br>V 
+C 
+. 
+s 
+c 
+[ <br><br>3 
+v 
+9 
+9 
+0 
+2 
+1 
+. 
+7 
+0 
+0 
+2 
+: 
+v 
+i 
+X 
+r 
+a 
+Object detection is one of the most important areas in 
+computer vision, which plays a key role in various prac- 
+tical scenarios. Due to limitation of hardware, it is often 
+necessary to sacriﬁce accuracy to ensure the infer speed of 
+the detector in practice. Therefore, the balance between ef- 
+fectiveness and efﬁciency of object detector must be con- 
+sidered. The goal of this paper is to implement an ob- 
+ject detector with relatively balanced effectiveness and ef- 
+ﬁciency that can be directly applied in actual application 
+scenarios, rather than propose a novel detection model. 
+Considering that YOLOv3 has been widely used in prac- 
+tice, we develop a new object detector based on YOLOv3. 
+We mainly try to combine various existing tricks that al- 
+most not increase the number of model parameters and 
+FLOPs, to achieve the goal of improving the accuracy of 
+detector as much as possible while ensuring that the speed 
+is almost unchanged. Since all experiments in this pa- 
+per are conducted based on PaddlePaddle, we call it PP- 
+YOLO. By combining multiple tricks, PP-YOLO can achieve 
+a better balance between effectiveness (45.2% mAP) and 
+efﬁciency (72.9 FPS), surpassing the existing state-of-the- 
+art detectors such as EfﬁcientDet and YOLOv4. Source 
+code is at https://github.com/PaddlePaddle/ 
+PaddleDetection. 
+1. Introduction <br><br>Object detection is an important yet challenging task. 
+In the past few years, thanks to the advance of deep con- 
+volutional neural network[18, 13], object detectors have 
+achieved remarkable performance[33, 21, 31, 32, 1, 22, 28, 
+9, 45, 2, 5, 37, 20, 4, 15, 35]. <br><br>In particular, one stage object detectors have a good bal- 
+ance between speed and accuracy, and have been widely 
+used in practice[27, 22, 30, 31, 32, 1]. YOLO series, 
+including YOLOv1[30], YOLOv2[31], YOLOv3[32] and 
+YOLOv4[1], is one of the most famous series. Among 
+Xiang Long, Kaipeng Deng, Guanzhong Wang, Yang Zhang, Qingqing Dang, 
+Yuan Gao, Hui Shen, Jianguo Ren, Shumin Han, Errui Ding, Shilei Wen 
+{longxiang, dengkaipeng, wangguanzhong, zhangyang57, dangqingqing, 
+gaoyuan18, shenhui08, v renjianguo, hanshumin, dingerrui, wenshilei}@baidu.com 
+Baidu Inc. 
+Figure 1. Comparison of the proposed PP-YOLO and other state- 
+of-the-art object detectors. PP-YOLO runs faster than YOLOv4 
+and improves mAP from 43.5% to 45.2%. 
+them, the network structures of YOLO to YOLOv3 have 
+relatively large changes. YOLOv4 considers various strate- 
+gies such as bag of freebies and bag of specials on the ba- 
+sis of YOLOv3, which greatly improves the performance of 
+the detector. This paper introduces an improved YOLOv3 
+model based on PaddlePaddle (PP-YOLO). A bunch of 
+tricks that almost not increase the infer time are added to 
+improve the overall performance of the model. <br><br>Unlike YOLOv4, we did not explore different backbone 
+networks and data augmentation methods, nor did we use 
+NAS to search for hyperparameters. For the backbone, we 
+directly use the most common ResNet[13] as the backbone 
+of PP-YOLO. For data augmentation, we directly used the 
+most basic MixUp [43]. One reason is that ResNet is used 
+more wildly, such that various deep learning frameworks 
+have deeply optimized for ResNet series, which will be 
+more convenient in actual deployment and will have better 
+infer speed in practical. Another reason is that the replace- 
+ment of backbone and data augmentation are relatively in- 
+dependent factors, almost irrelevant to the tricks discussed in this paper. Since there are already a lot of works to study 
+backbone network and to explore data augmentation, we do 
+not repeat them in this paper. Searching for hyperparame- 
+ters using NAS often consumes more computing power, so 
+there is usually no condition to use NAS to perform a hyper- 
+parameter search in each new scenario. Therefore, we still 
+use the manually set parameters following YOLOv3[32]. 
+We believe that using a better backbone network, using 
+more effective data augmentation method and using NAS 
+to search for hyperparameters can further improve the per- 
+formance of PP-YOLO. <br><br>The focus of this paper is how to stack some effective 
+tricks that hardly affect efﬁciency to get better performance. 
+Many of these tricks cannot be directly applied to the net- 
+work structure of YOLOv3, so small modiﬁcation is re- 
+quired. Moreover, where to add tricks also needs care- 
+ful consideration and experiment. This paper is not in- 
+It is more 
+tended to introduce a novel object detecotor. 
+like a recipe, which tell you how to build a better detec- 
+tor step by step. We have found some tricks that are ef- 
+fective for the YOLOv3 detector, which can save devel- 
+opers’ time of trial and error. The ﬁnal PP-YOLO model 
+improves the mAP on COCO from 43.5% to 45.2% at a 
+speed faster than YOLOv4. The code and model is released 
+in the PaddleDetection code-base (https://github. 
+com/PaddlePaddle/PaddleDetection). 
+Anchor-based methods are still the mainstream of object 
+detection [33, 21, 31, 32, 1, 22, 28, 9, 45, 2, 5, 37, 20, 4, 15], 
+which evolved from early proposal based detectors, such 
+as Fast R-CNN [11]. Their core idea is to introduce an- 
+chor boxes, which can be viewed as pre-deﬁned propos- 
+It mainly 
+als, as a priori for bounding box regression. 
+includes two branches: one-stage detectors and two-stage 
+detectors[24]. A large amount of one-stage detectors in- 
+cluding YOLOv2[31], YOLOv3[32], YOLOv4[1], Reti- 
+naNet [22], ReﬁneDet [44], EfﬁcentDet [35], FreeAnchor 
+[45], and two-stage detectors including faster R-CNN [33] 
+FPN[21], Cascade R-CNN[2], Trident-Net[20] are pro- 
+posed to promote the growth of state-of-the-art perfor- 
+mance in object detection continuously. Besides, anchor- 
+free detectors have recently received more and more at- 
+tention. 
+In the past two years, a large number of new 
+anchor-free methods have been proposed. The anchor- 
+free method actually has a long history. Earlier works 
+such as YOLOv1[30], DenseBox[14] and UnitBox[41] can 
+be considered as early anchor-free detectors. They can 
+be divided into two types. Anchor-point based detec- 
+tors perform object bounding box regression based on an- 
+chor points instead of anchor boxes, including FSAF [49], 
+FCOS[36], FoveaBox[17], SAPD[48]. Keypoint based de- 
+tectors reformulate the object detection as keypoints local- 
+ization problem, including CornerNet[19], CenterNet[8], 
+ExtremeNet[47] and RepPoint[40]. Breaking the limitation 
+imposed by hand-craft anchors, anchor-free methods show 
+great potential for extreme object scales and aspect ratios 
+[16]. The performance of some recently proposed anchor- 
+free detectors can also compete with state-of-the-art anchor- 
+based detectors. <br><br>YOLO series detectors [30, 31, 32, 1] have been widely 
+used in practice, due to their excellent effectiveness and 
+efﬁciency. Until the writing of this paper, it has devel- 
+oped to YOLOv4[1]. YOLOv4 discusses a large number 
+of tricks including many “bag of freebies” which not in- 
+crease the infer time, and several “bag of specials” that in- 
+crease the inference cost by a small amount but can signif- 
+icantly improve the accuracy of object detection. YOLOv4 
+greatly improves the effectiveness and efﬁciency of the 
+YOLOv3[32]. This paper is also developed based on 
+YOLOv3 model and also explored a lot of tricks. Unlike 
+YOLOV4, we have not explored some widely studied parts 
+such as data augmentation and backbone. Many tricks we 
+discussed in this paper are different from YOLOV4 and the 
+detailed implementation of tricks is also different. 
+3. Method <br><br>An one-stage anchor-based detector is normally made 
+up of a backbone network, a detection neck, which is typ- 
+ically a feature pyramid network (FPN), and a detection 
+head for object classiﬁcation and localization. They are 
+also common components in most of the one-stage anchor- 
+free detectors based on anchor-point. We ﬁrst revise the de- 
+tail structure of YOLOv3 and introduce a modiﬁed version 
+which replace the backbone to ResNet50-vd-dcn, which is 
+used as the basic baseline in this paper. Then we introduce 
+a bunch of tricks which can improve the performance of 
+YOLOv3 almost without losing efﬁciency. <br><br>3.1. Architecture <br><br>Backbone The overall architecture of YOLOv3 is shown 
+in Fig. 2. 
+In original YOLOv3[32], DarkNet-53 is ﬁrst 
+applied to extract feature maps at different scales. Since 
+ResNet[13] has been widely used and and has been stud- 
+ied more extensively, there are more different variants for 
+selection, and it has also been better optimized by deep 
+learning frameworks. So, we replace the original backbone 
+DarkNet-53 with ResNet50-vd in PP-YOLO. Considering 
+directly replace DarkNet-53 with ResNet50-vd will hurt the 
+performance of YOLOv3 detector. We replace some con- 
+volutional layers in ResNet50-vd with deformable convo- 
+lutional layers. The effectiveness of Deformable Convolu- 
+tional Networks (DCN) has been veriﬁed in many detection 
+models. DCN itself will not signiﬁcantly increase the num- 
+ber of parameters and FLOPs in the model, but in practical Figure 2. The network architecture of YOLOv3 and inject points for PP-YOLO. Activation layers are omitted for brevity. Details are 
+described in Section 3.1 and Section 3.2. 
+application, too many DCN layers will greatly increase in- 
+fer time. Therefore, in order to balance the efﬁciency and 
+effectiveness, we only replace 3 × 3 convolution layers in 
+the last stage with DCNs. We denote this modiﬁed back- 
+bone as ResNet50-vd-dcn, and the output of stage 3, 4 and 
+5 as C3, C4, C5. <br><br>Detection Neck Then the FPN [21] is used to build an 
+feature pyramid with lateral connections between feature 
+maps. Feature maps C3, C4, C5 are input to the FPN mod- 
+ule. We denote the output feature maps of pyramid level l 
+as Pl, where l = 3, 4, 5 in our experiments. The resolution 
+of Pl is W 
+2l for an input image of size W × H. The 
+detail structure of FPN is shown in Fig. 2. 
+2l × H <br><br>Detection Head The detection head of YOLOv3 is very 
+simple. It consists of two convolutional layers. A 3 × 3 con- 
+volutional followed by an 1 × 1 convolutional layer is adopt 
+to get the ﬁnal predictions. The output channel of each ﬁ- 
+nal prediction is 3(K + 5), where K is number of classes. 
+Each position on each ﬁnal prediction map has been asso- 
+ciate with three different anchors. For each anchor, the ﬁrst 
+K channels are the prediction of probability for K classes. 
+The following 4 channels are the prediction for bounding 
+box localization. The last channel is the prediction of ob- 
+jectness score. For classiﬁcation and localization, cross en- 
+tropy loss and L1 loss is adopt correspondingly. An ob- 
+jectness loss [32] is applied to supervise objectness score, 
+which is used to identify whether is there an object or not. 
+3.2. Selection of Tricks <br><br>The various tricks we used in this paper are described 
+in this section. These tricks are all already existing, which 
+coming from different works [10, 1, 42, 39, 38, 25, 12]. This 
+paper does not propose an novel detection method, but just 
+focuses on combining the existing tricks to implement an 
+effective and efﬁcient detector. Because many tricks can- 
+not be applied to YOLOv3 directly, we need to adjust them 
+according to the its structure. 
+Larger Batch Size Using a larger batch size can improve 
+the stability of training and get better results. Here we 
+change the training batch size from 64 to 192, and adjust 
+the training schedule and learning rate accordingly. 
+EMA When training a model, it is often beneﬁcial to main- 
+tain moving averages of the trained parameters. Evaluations 
+that use averaged parameters sometimes produce signiﬁ- 
+cantly better results than the ﬁnal trained values [35]. The 
+Exponential Moving Average (EMA) compute the moving 
+averages of trained parameters using exponential decay. For 
+each parameter W , we maintain an shadow parameter 
+WEM A = λWEM A + (1 − λ)W,  (1) <br><br>where λ is the decay. We apply EMA with decay λ of 
+0.9998 and use the shadow parameter WEM A for evalua- 
+tion. 
+DropBlock [10] DropBlock is a form of structured dropout, where units in a contiguous region of a feature map are 
+dropped together. Different from the original paper, we 
+only apply DropBlock to the FPN, since we ﬁnd that adding 
+DropBlock to the backbone will lead to a decrease of the 
+performance. The detailed inject points of the DropBlock 
+are marked by ”triangles” in Figure 2. 
+IoU Loss [42] Bounding box regression is the crucial step in 
+object detection. In YOLOv3, L1 loss is adopted for bound- 
+ing box regression. It is not tailored to the mAP evaluation 
+metric, which is strongly rely on Intersection over Union 
+(IoU). IoU loss and other variations such as CIoU loss and 
+GIoU loss[46, 34] have been proposed to address this prob- 
+lem. Different from YOLOv4, we do not replace the L1-loss 
+with IoU loss directly, we add another branch to calculate 
+IoU loss. We ﬁnd that the improvements of various IoU loss 
+are similar, so we choose the most basic IoU loss [42]. 
+IoU Aware [39] In YOLOv3, the classiﬁcation probabil- 
+ity and objectness score is multiplied as the ﬁnal detection 
+conﬁdence, which do not consider the localization accu- 
+racy. To solve this problem, an IoU prediction branch is 
+added to measure the accuracy of localization. During train- 
+ing, IoU aware loss is adopt to training the IoU prediction 
+branch. During inference, the predicted IoU is multiplied 
+by the classiﬁcation probability and objectiveness score to 
+compute the ﬁnal detection conﬁdence, which is more cor- 
+related with the localization accuracy. The ﬁnal detection 
+conﬁdence is then used as the input of the subsequent NMS. 
+IoU aware branch will add additional computational cost. 
+However, only 0.01% number of parameters and 0.0001% 
+FLOPs are added, which can be almost ignored. 
+Grid Sensitive[1] Grid Sensitive is an effective trick intro- 
+duced by YOLOv4. When we decode the coordinate of the 
+bounding box center x and y, in original YOLOv3, we can 
+get them by 
+x = s · (gx + σ(px)), 
+y = s · (gy + σ(py)), <br><br>(2) <br><br>(3) <br><br>where σ is the sigmoid function, gx and gy are integers and 
+s is a scale factor. Obviously, x and y cannot be exactly 
+equal to s · gx or s · (gx + 1). This makes it difﬁcult to 
+predict the centres of bounding boxes that just located on 
+the grid boundary. We can address this problem, by change 
+the equation to <br><br>x = s · (gx + α · σ(px) − (α − 1)/2), 
+y = s · (gy + α · σ(py) − (α − 1)/2), <br><br>(4) <br><br>(5) <br><br>where α is set to 1.05 in this paper. This makes it easier for 
+the model to predict bounding box center exactly located on 
+the grid boundary. The FLOPs added by Grid Sensitive is 
+really small, and can be totally ignored. 
+Matrix NMS [38] Matrix NMS is motivated by Soft-NMS, 
+which decays the other detection scores as amonotonic de- 
+creasing function of their overlaps. However, such process 
+is sequential like traditional Greedy NMS and could not 
+be implemented in parallel. Matrix NMS views this pro- 
+cess from another perspective and implement it in a parallel 
+manner. Therefore, the Matrix NMS is faster than tradi- 
+tional NMS, which will not bring any loss of efﬁciency. 
+CoordConv [25] CoordConv, which works by giving con- 
+volution access to its own input coordinates through the use 
+of extra coordinate channels. CoordConv allows networks 
+to learn either complete translation invariance or varying 
+degrees of translation dependence. Considering that Coord- 
+Conv will add two inputs channels to the convolution layer, 
+some parameters and FLOPs will be added. In order to re- 
+duce the loss of efﬁciency as much as possible, we do not 
+change convolutional layers in backbone, and only replace 
+the 1x1 convolution layer in FPN and the ﬁrst convolution 
+layer in detection head with CoordConv. The detailed in- 
+ject points of the CoordConv are marked by ”diamonds” in 
+Figure 2. 
+SPP [12] The Spatial Pyramid Pooling (SPP) is ﬁrst pro- 
+posed by He et al[12]. SPP integrates SPM into CNN 
+and use max-pooling operation instead of bag-of-word op- 
+eration. YOLOv4 apply SPP module by concatenating 
+max-pooling outputs with kernel size k × k, where k = 
+{1, 5, 9, 13}, and stride equals to 1. Under this design, a 
+relatively large k × k max-pooling effectively increase the 
+receptive ﬁeld of backbone feature. In detail, the SPP only 
+applied on the top feature map as shown in Figure 2 with 
+”star” mark. No parameter are introduced by SPP itself, but 
+the number of input channel of the following convolutional 
+layer will increase. So around 2% additional papameters 
+and 1% extra FLOPs are introduced. 
+Better Pretrain Model Using a pretrain model with higher 
+classiﬁcation accuracy on ImageNet may result in better de- 
+tection performance. Here we use the distilled ResNet50-vd 
+model as the pretrain model [29] . This obviously does not 
+affect the efﬁciency of the detector. 
+4. Experiment <br><br>In this section, we present the effectiveness of differ- 
+ent tricks. Experiments were carried out on the bounding 
+box detection track of the COCO dataset [23]. Following 
+the common practice [32, 35, 1], we use trainval35k 
+split for training, which contains ∼118k images, minival 
+split (5k) for validation and ablation study, and test-dev 
+split(∼20k) for testing. <br><br>4.1. Implementation Details <br><br>We use ResNet50-vd-dcn[13] as the backbone networks 
+unless speciﬁed. The architecture of FPN and head in our 
+basic models is completely the same as YOLOv3[32]. The 
+details have been presented in section 3.1. We initialize our detectors following common practice. Speciﬁcally, our 
+backbone networks are initialized with the weights pre- 
+trained on ImageNet[7]. For the FPN and detection heads, 
+we initialize them randomly as same as in YOLOv3[32]. 
+For the baseline model (A, B), The training schedule is as 
+same as YOLOv3. Under larger batch size setting, the entire 
+network is trained with stochastic gradient descent (SGD) 
+for 250K iterations with the initial learning rate being 0.01 
+and a minibatch of 192 images distributed on 8 GPUs. The 
+learning rate is divided by 10 at iteration 150K and 200K, 
+respectively. Weight decay is set as 0.0005, and momentum 
+is set as 0.9. Multi-scale training from 320 to 608 pixels is 
+applied. MixUp[43] is adopted for data augmentation. <br><br>4.2. Ablation Study 
+In this section, we present the effectiveness of each mod- 
+ule in an incremental manner. The reason is that each trick is 
+not completely independent. Some tricks are effective when 
+applied alone, but they are not effective when combined to- 
+gether. Since there are too many combinations of various 
+tricks, it is difﬁcult to conduct a comprehensive analysis. 
+Therefore, we show how to improve the performance of 
+the object detector step by step in the order of our explo- 
+ration and discovering the effectiveness of tricks. Results 
+are shown in Table 1, where infer time and FPS do not con- 
+sider the inﬂuence of NMS following YOLOv4[1]. 
+A → B First of all, we try to build a basic version of PP- 
+YOLO. Because the ResNet[13] series is more widely used, 
+we ﬁrst replace the original YOLOv3 backbone Darknet53 
+with ResNet50-vd. However, we found that it will cause 
+a signiﬁcant decrease in mAP. Considering that the number 
+of parameters and FLOPs of ResNet50-vd are much smaller 
+than those of Darknet53, we replace the 3 × 3 convolutional 
+layer in the last stage of ResNet with deformable convolu- 
+tion layer[6]. In this way, we get a basic PP-YOLO model 
+(B) with a mAP of 39.1%, which is slightly higher than the 
+original YOLOv3 (A), but its parameters, FLOPs and infer 
+time are much smaller than the original YOLOv3 model. 
+B → C We ﬁrst try to optimize the training strategy. We use 
+Methods <br><br>mAP(%) 
+38.9 
+39.1 
+41.4 
+41.9 
+42.5 
+42.8 
+43.5 
+44.0 
+44.3 
+44.6  Parameters GFLOPs 
+59.13 M 
+43.89 M 
+43.89 M 
+43.89 M 
+43.90 M 
+43.90 M 
+43.90 M 
+43.93 M 
+44.93 M 
+44.93 M  infer time 
+17.2 ms 
+12.6 ms 
+12.6 ms 
+12.6 ms 
+13.3 ms 
+13.4 ms 
+13.4 ms 
+13.5ms 
+13.7 ms 
+13.7 ms  A Darknet53 YOLOv3 
+B ResNet50-vd-dcn YOLOv3 
+C B + LB + EMA + DropBlock 
+D C + IoU Loss 
+E D + Iou Aware 
+F 
+G F + Matrix NMS 
+H G + CoordConv 
+H + SPP 
+I 
+I + Better ImageNet Pretrain 
+J  65.52 
+44.71 
+44.71 
+44.71 
+44.71 
+44.71 
+44.71 
+44.76 
+45.12 
+45.12 <br><br>E + Grid Sensitive 
+a larger batch size and EMA to improve the stability of the 
+model, and also apply DropBlock to prevent the model from 
+overﬁtting. After using these strategies, the mAP of model 
+(C) increases to 41.4% without any loss of efﬁciency. <br><br>C → F Next, we consider modifying the YOLO loss to im- 
+prove the effectiveness of the model, because modifying the 
+loss generally only has an impact on the training process, 
+and will not or rarely affect the infer time. We add IoU 
+Loss (D), IoU Aware (E) and Grid Sensitive (F) modules, 
+and increase the mAP by 0.5%, 0.6% and 0.3% respec- 
+tively. Among them, IoU loss will not affect the number 
+of parameters and the infer time at all. IoU Aware and Grid 
+Sensitive will increase the post-processing time by 0.7ms 
+and 0.1ms, since the current implementation is not efﬁcient 
+enough, which can be greatly reduced by merging them as 
+a single OP in PaddlePaddle in the future. On the whole, 
+we have increased the mAP of PP-YOLO from 41.4% to 
+42.8%. 
+F → G Post-processing is also a place where we can im- 
+prove the performance. We use Matrix NMS (G) to replace 
+traditional greedy NMS. We can see that the mAP has im- 
+proved by 0.6%. Since the infer time in Table 1 does not 
+consider NMS, so the inﬂuence is not shown here. In fact, 
+the overall infer time is decreased since the efﬁciency of 
+MatrixNMS is higher than traditional NMS. <br><br>G → I It has become difﬁcult to continue to improve mAP 
+without increasing the number of parameters and FLOPs. 
+So we considered two methods that only increase a few 
+parameters and FLOPs but can bring effective improve- 
+ments, CoordConv (H) and SPP (I). CoordConv will cause 
+the input channel of convolutional layers increase by 2, 
+the number of parameters increases by 0.03M, and FLOPs 
+increases by 0.05G, which is very small compared to the 
+whole model. It can bring an improvement of 0.5% mAP. 
+SPP itself does not increase the parameters, but it will in- 
+crease the input channel of the convolutional layer just fol- 
+lowing it, resulting in an increase of the parameters by 1M 
+and FLOPs by 0.36G. It can improve the mAP of PP-YOLO FPS (V100) 
+w/o TRT with TRT 
+Size <br><br>640 
+640 
+1024 
+1024 
+512 
+640 
+768 
+896 
+512 
+512 
+320 
+416 
+608 
+800 
+416 
+512 
+608 
+320 
+416 
+512 
+608  37 
+29.4 
+19.6 
+15.4 
+98.0+ 
+74.1+ 
+56.5+ 
+34.5+ 
+41.5 
+37.1 
+60 
+54 
+45.5 
+29.4 
+96 
+83 
+62 
+132.2 
+109.6 
+89.9 
+72.9  - 
+- 
+- 
+- 
+- 
+- 
+- 
+- 
+- 
+- 
+- 
+- 
+- 
+- 
+164.0∗ 
+138.4∗ 
+105.5∗ 
+242.2 
+215.4 
+188.4 
+155.6 <br><br>Table 2. Comparison of the speed and accuracy of different object detectors on the MS-COCO (test-dev 2017). We compare the results with 
+batch size = 1, without tensorRT (w/o TRT) or with tensorRT(with TRT). Results marked by ”+” are updated results from the corresponding 
+ofﬁcial code base, which are higher than the results in original paper. Results marked by ”*” are test in our environment using ofﬁcial code 
+and model, which are slightly higher than results reported in ofﬁcial code-base. 
+by 0.3% further. After adding these two modules, the infer 
+time has increased by 0.3ms. 
+I → J Replacing the pre-trained model is a very common 
+approach. However, the accuracy of pretrained classiﬁca- 
+tion model is higher does not mean that the ﬁnal detection 
+model is more effective, and the degree of improvement will 
+be affected by the tricks we used. So we consider it at the 
+end. For fair comparisons, we still use ImageNet for pre- 
+training. We use a distilled ResNet50-vd model for back- 
+bone initialization. The mAP of PP-YOLO can be further 
+improved by 0.3%. In fact, using other detection datasets 
+for pre-training can greatly improve the performance of the 
+model, but this is beyond the scope of this paper. <br><br>4.3. Comparison with Other State-of-the-Art De- 
+tectors <br><br>Comparison of the results on MS-COCO test split with 
+other state-of-the-art object detectors are shown in Figure 
+1 and Table 2. The FPS results of PP-YOLO and other 
+methods are all tested on V100 with batch size = 1. We 
+considered two different test conditions, without tensorRT 
+(w/o TRT) and with tensorRT (with TRT). The test methods 
+are consistent with YOLOv4[1]. Results marked by ”+” are 
+updated results from the corresponding ofﬁcial code-base, 
+which are higher than the results in original paper, Results 
+marked by ”*” are test in our environment using ofﬁcial 
+code and model, which are slightly higher than results re- 
+ResNet-50 
+RetinaNet [22] 
+ResNet-101 
+RetinaNet [22] 
+ResNet-50 
+RetinaNet [22] 
+ResNet-101 
+RetinaNet [22] 
+Efﬁcient-B0 
+EfﬁcientDet-D0 [35] 
+Efﬁcient-B1 
+EfﬁcientDet-D1 [35] 
+Efﬁcient-B2 
+EfﬁcientDet-D2 [35] 
+Efﬁcient-B3 
+EfﬁcientDet-D2 [35] 
+HarDNet68 
+RFBNet[3] 
+RFBNet[3] 
+HarDNet85 
+YOLOv3 + ASFF*[26] Darknet-53 
+YOLOv3 + ASFF*[26] Darknet-53 
+YOLOv3 + ASFF*[26] Darknet-53 
+YOLOv3 + ASFF*[26] Darknet-53 
+YOLOv4 [1] 
+YOLOv4 [1] 
+YOLOv4 [1] 
+PP-YOLO 
+PP-YOLO 
+PP-YOLO 
+PP-YOLO  CSPDarknet-53 
+CSPDarknet-53 
+CSPDarknet-53 
+ResNet50-vd-dcn 
+ResNet50-vd-dcn 
+ResNet50-vd-dcn 
+ResNet50-vd-dcn 
+ported in ofﬁcial code-base. <br><br>Compared with other state-of-the-art methods, our PP- 
+YOLO has certain advantages in speed and accuracy. For 
+example, compared with YOLOv4, our PPYOLO can in- 
+creased the mAP on COCO from 43.5% to 45.2% with FPS 
+improved from 62 to 72.9. It is worth noticing that tensorRT 
+accelerates the PP-YOLO model more obviously. The rel- 
+ative improvement of PP-YOLO (around 100%) is larger 
+than YOLOv4(around 70%). We speculate that it is mainly 
+because tensorRT optimizes for ResNet model better than 
+Darknet. <br><br>In addition, we can get a series of PP-YOLO results by 
+changing the input size of the image. Here we also show 
+the results for 320, 416, 512 and 608 input sizes. Figure 1 
+shows that PP-YOLO results have advantages in the balance 
+of speed and accuracy compared with other detectors. <br><br>5. Conclusions <br><br>This paper introduce a new implementation of object 
+detector based on PaddlePaddle, called PP-YOLO. PP- 
+YOLO is faster (FPS) and more accurate(COCO mAP) than 
+other state-of-the-art detectors, such as EfﬁcientDet and 
+YOLOv4. 
+In this paper, we explore a lot of tricks and 
+show how to combine these tricks on the YOLOv3 detec- 
+tor and demonstrate their effectiveness. We hope this paper 
+can help developers and researchers save exploration time 
+and get better performance in practical applications. 
+37.0% 
+37.9% 
+40.1% 
+41.1% 
+33.8% 52.2% 35.8% 12.0% 38.3% 51.2% 
+39.6% 58.6% 42.3% 17.9% 44.3% 56.0% 
+43.0% 62.3% 46.2% 22.5% 47.0% 58.4% 
+45.8% 65.0% 49.3% 26.6% 49.4% 59.8% 
+33.9% 54.3% 36.2% 14.7% 36.6% 50.5% 
+36.8% 57.1% 39.5% 16.9% 40.5% 52.9% 
+38.1% 57.4% 42.1% 16.1% 41.6% 53.6% 
+40.6% 60.6% 45.1% 20.3% 44.2% 54.1% 
+42.4% 63.0% 47.4% 25.5% 45.7% 52.3% 
+43.9% 64.1% 49.2% 27.0% 46.6% 53.4% 
+41.2% 62.8% 44.3% 20.4% 44.4% 56.0% 
+43.0% 64.9% 46.5% 24.3% 46.1% 55.2% 
+43.5% 65.7% 47.3% 26.7% 46.7% 53.3% 
+39.3% 59.3% 42.7% 16.7% 41.4% 57.8% 
+42.5% 62.8% 46.5% 21.2% 45.2% 58.2% 
+44.4% 64.6% 48.8% 24.4% 47.1% 58.2% 
+45.2% 65.2% 49.9% 26.3% 47.8% 57.2% 
+AP  AP50  AP75  APS  APM  APL <br><br>- 
+- 
+- 
+-  - 
+- 
+- 
+-  - 
+- 
+- 
+-  - 
+- 
+- 
+-  - 
+- 
+- 
+- [9] C.-Y. Fu, W. Liu, A. Ranga, A. Tyagi, and A. C. Berg. 
+DSSD: Deconvolutional single shot detector. In arXiv 
+preprint arXiv:1701.06659, 2016. 1, 2 <br><br>[10] G. Ghiasi, T.-Y. Lin, and Q. V. Le. Dropblock: A 
+regularization method for convolutional networks. In 
+NeurIPS, 2018. 3 <br><br>[11] R. B. Girshick. Fast R-CNN. In IEEE ICCV, pages 
+1440–1448, 2015. 2 <br><br>[12] K. He, X. Zhang, S. Ren, and J. Sun. Spatial pyra- 
+mid pooling in deep convolutional networks for visual 
+IEEE transactions on pattern analysis 
+recognition. 
+and machine intelligence, 37(9):1904–1916, 2015. 3, 
+4 <br><br>[13] K. He, X. Zhang, S. Ren, and J. Sun. Deep resid- 
+ual learning for image recognition. In Proceedings of 
+[1] A. Bochkovskiy, C.-Y. Wang, and H.-Y. M. Liao. 
+Yolov4: Optimal speed and accuracy of object detec- 
+tion. arXiv preprint arXiv:2004.10934, 2020. 1, 2, 3, 
+4, 5, 6 <br><br>[2] Z. Cai and N. Vasconcelos. Cascade r-cnn: Delving 
+into high quality object detection. In Proceedings of 
+the IEEE conference on computer vision and pattern 
+recognition, pages 6154–6162, 2018. 1, 2 <br><br>[3] P. Chao, C.-Y. Kao, Y.-S. Ruan, C.-H. Huang, and Y.- 
+L. Lin. Hardnet: A low memory trafﬁc network. In 
+Proceedings of the IEEE international conference on 
+computer vision, 2019. 6 <br><br>[4] J. Choi, D. Chun, H. Kim, and H.-J. Lee. Gaussian 
+yolov3: An accurate and fast object detector using 
+In 
+localization uncertainty for autonomous driving. 
+IEEE ICCV, pages 502–511, 2019. 1, 2 
+[5] J. Dai, Y. Li, K. He, and J. Sun. R-fcn: Object de- 
+tection via region-based fully convolutional networks. 
+In Advances in neural information processing systems, 
+pages 379–387, 2016. 1, 2 <br><br>[6] J. Dai, H. Qi, Y. Xiong, Y. Li, G. Zhang, H. Hu, 
+and Y. Wei. Deformable convolutional networks. In 
+Proceedings of the IEEE international conference on 
+computer vision, pages 764–773, 2017. 5 <br><br>[7] J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and 
+L. Fei-Fei. Imagenet: A large-scale hierarchical im- 
+age database. In 2009 IEEE conference on computer 
+vision and pattern recognition, pages 248–255. Ieee, 
+2009. 5 <br><br>[8] K. Duan, S. Bai, L. Xie, H. Qi, Q. Huang, and Q. Tian. 
+Centernet: Object detection with keypoint triplets. In 
+Proceedings of the IEEE International Conference on 
+Computer Vision, 2019. 2 
+the IEEE conference on computer vision and pattern 
+recognition, pages 770–778, 2016. 1, 2, 4, 5 <br><br>[14] L. Huang, Y. Yang, Y. Deng, and Y. Yu. Densebox: 
+Unifying landmark localization with end to end object 
+detection. arXiv preprint arXiv:1509.04874, 2015. 2 
+[15] B. Jiang, R. Luo, J. Mao, T. Xiao, and Y. Jiang. Ac- 
+quisition of localization conﬁdence for accurate object 
+detection. In ECCV, pages 784–799, 2018. 1, 2 
+[16] W. Ke, T. Zhang, Z. Huang, Q. Ye, J. Liu, and 
+D. Huang. Multiple anchor learning for visual object 
+detection. arXiv preprint arXiv:1912.02252, 2019. 2 
+[17] T. Kong, F. Sun, H. Liu, Y. Jiang, and J. Shi. Fove- 
+abox: Beyond anchor-based object detector. arXiv 
+preprint arXiv:1904.03797, 2019. 2 
+[18] A. Krizhevsky, I. Sutskever, and G. E. Hinton. <br><br>Im- 
+agenet classiﬁcation with deep convolutional neural 
+networks. In Advances in neural information process- 
+ing systems, pages 1097–1105, 2012. 1 <br><br>[19] H. Law and J. Deng. Cornernet: Detecting objects 
+as paired keypoints. In Proceedings of the European 
+Conference on Computer Vision (ECCV), pages 734– 
+750, 2018. 2 <br><br>[20] Y. Li, Y. Chen, N. Wang, and Z. Zhang. Scale-aware 
+trident networks for object detection. In Proceedings 
+of the IEEE International Conference on Computer Vi- 
+sion, 2019. 1, 2 <br><br>[21] T.-Y. Lin, P. Doll´ar, R. Girshick, K. He, B. Hariharan, 
+and S. Belongie. Feature pyramid networks for object 
+detection. In Proceedings of the IEEE conference on 
+computer vision and pattern recognition, pages 2117– 
+2125, 2017. 1, 2, 3 
+[22] T.-Y. Lin, P. Goyal, R. Girshick, K. He, and P. Doll´ar. 
+Focal loss for dense object detection. In Proceedings 
+of the IEEE international conference on computer vi- 
+sion, pages 2980–2988, 2017. 1, 2, 6 <br><br>[23] T.-Y. Lin, M. Maire, S. Belongie, J. Hays, P. Perona, 
+D. Ramanan, P. Doll´ar, and C. L. Zitnick. Microsoft 
+coco: Common objects in context. In European con- 
+ference on computer vision, pages 740–755. Springer, 
+2014. 4 <br><br>[24] L. Liu, W. Ouyang, XiaogangWang, P. Fieguth, 
+J. Chen, X. Liu, and M. Pietikainen. Deep learning 
+for generic object detection: A survey. Int. J. Comp. 
+Vis., 2019. 2 <br><br>[25] R. Liu, J. Lehman, P. Molino, F. P. Such, E. Frank, 
+A. Sergeev, and J. Yosinski. An intriguing failing of 
+convolutional neural networks and the coordconv so- 
+lution. In NeurIPS, pages 9605–9616, 2018. 3, 4 
+[26] S. Liu, D. Huang, and Y. Wang. Learning spatial fu- 
+sion for single-shot object detection. arXiv preprint 
 arXiv:1911.09516, 2019. 6 

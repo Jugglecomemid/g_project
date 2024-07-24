@@ -4,25 +4,31 @@
 import math
 from collections import defaultdict, deque
 
-def donate(b1, b2):
-    # b1 到 b2 能否引爆
+def explode(b1, b2):
+    '''
+    验证 b1 到 b2 能否引爆
+    '''
     x1, y1, r1 = b1
     x2, y2, r2 = b2
     distance = math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
     return distance <= r1
 
 def build_boom_graph(booms_lst):
-    # 遍历炸弹 建立能炸的范围图
+    '''
+    遍历炸弹 建立能炸的范围图
+    '''
     graph = defaultdict(list)
     n = len(booms_lst)
     for i in range(n):
         for j in range(n):
-            if i != j and donate(booms_lst[i], booms_lst[j]):
+            if i != j and explode(booms_lst[i], booms_lst[j]):
                 graph[i].append(j)
     return graph
 
 def bfs(start, graph):
-    # 广度优先搜索
+    '''
+    广度优先搜索
+    '''
     visited = set()
     queue = deque([start])
     while queue:

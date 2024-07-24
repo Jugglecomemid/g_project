@@ -41,8 +41,7 @@ def recover_layout(parsed_document):
         # display(node.bbox)
         # display(node.text)
 
-
-    with open('./pdf/process_pdf.txt', 'a+') as f:
+    with open('./txt/process_pdf.txt', 'a+') as f:
         f.write(full_text)
 
     return full_text
@@ -91,16 +90,16 @@ def recall_chunk(vector_index:VectorStoreIndex, topk:int, query:str):
     results = base_retriever.retrieve(query)
     ref_i = 1
     for result in results:
-        chunk_prompt = chunk_prompt + f'[信息{ref_i}]' + result + '\n'
+        chunk_prompt = chunk_prompt + f'[信息{ref_i}]' + result.text + '\n'
         ref_i += 1
-
+    print(chunk_prompt)
     return chunk_prompt
 
 def request_llm(message_log:list):
     """
     大模型使用 fastchat 框架部署;
-    具体部署流程请参考 model_deply;
-    好处是兼容 openai 调用方式，易于管理多个大模型部署;
+    具体部署流程请参考 README.md;
+    好处是兼容 openai 调用方式，易于管理多个大模型实例部署;
     """
     openai.api_key = "EMPTY"
     openai.base_url = "http://localhost:8000/v1/"
@@ -128,6 +127,7 @@ def main():
         vector_index = build_index(txt_path)
     else:
         vector_index = load_index()
+    # 召回4个检索片段
     ref_prompt = recall_chunk(vector_index, 4, test_query)
 
     prompt_tempate = f'你要参考信息回答问题。参考信息：{ref_prompt}。 要求：只能使用参考信息中的内容回答，不可以编造答案。\n 问题：{test_query}'
@@ -139,3 +139,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # model answer: We believe that using a better backbone network, using more effective data augmentation method and using NAS to search for hyperparameters can further improve the per-formance of PP-YOLO.
