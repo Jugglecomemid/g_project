@@ -1,5 +1,6 @@
 model/*
 !model/
+!model/.gitkeep
 *.log
 *.log.*
 model_deploy.py
