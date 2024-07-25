@@ -10,6 +10,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core import SimpleDirectoryReader
 
+# python version 3.9
 # 主要使用 openparse, llama_index 等工具构建向量索引
 # 设定主要参数，例如分块的参数以及检索模型的选择（这里选择了 bge-m3）
 text_splitter = SentenceSplitter(chunk_size=200, chunk_overlap=50)
