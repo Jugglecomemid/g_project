@@ -1,5 +1,5 @@
-model/bge-m3/
-model/Qwen2-0.5B-Instruct/
+model/*
+!model/
 *.log
 *.log.*
 model_deploy.py
