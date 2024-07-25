@@ -2,6 +2,7 @@
 # 解析pdf文档，尽可能还原版面，分块
 # 文本向量化，建立索引
 # 使用语义模型进行精准检索并给予大模型参考回答
+import re
 import openai
 import openparse
 from llama_index.core import VectorStoreIndex, Settings, StorageContext, load_index_from_storage
@@ -17,6 +18,12 @@ Settings.embed_model = HuggingFaceEmbedding(
     model_name="model/bge-m3", device='cuda:3'
 )
 
+def _clean(text):
+    '''
+    简单文本清洗
+    '''
+    text = re.sub(r'\- \n', '- ', text)
+    return text
 
 def recover_layout(parsed_document):
     """
